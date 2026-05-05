@@ -1866,7 +1866,8 @@ function renderDemands(){
   const tbody = document.getElementById('demands-tbody');
   const empty = document.getElementById('demands-empty');
   const footer = document.getElementById('table-footer');
-  if(!arr.length){ tbody.innerHTML=''; empty.classList.remove('hidden'); footer.textContent=''; return; }
+  if(!arr.length){ tbody.innerHTML=''; if(empty) empty.classList.remove('hidden'); if(footer) footer.textContent=''; return; }
+  if(empty) empty.classList.add('hidden');
   // Controle de colunas por aba
   const tab = currentDemandTab;
   const showTipo    = tab === '';
@@ -1904,12 +1905,12 @@ function renderDemands(){
     // Anexos do portal (enviados pelo solicitante)
     // Support both old (português) and new (english) field names
     const portalAnexos = (d.anexos||[]).filter(f=>f&&(f.name||f.nome)).map(f=>({
-      name: f.name||f.nome,
+      name: f.name||f.nome||'arquivo',
       size: f.size||f.tamanho,
-      type: f.type||f.tipo,
+      type: f.type||f.tipo||'',
       url: f.url || null,
       path: f.path || null
-    })).filter(f=>f.name);
+    }));
     const annexIcon = portalAnexos.length > 0
       ? portalAnexos.map(f=>{
           const icon = f.type&&f.type.startsWith('image/')?'🖼':f.type&&f.type.startsWith('video/')?'🎬':'📄';
