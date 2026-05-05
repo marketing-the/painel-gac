@@ -338,7 +338,9 @@ async function saveConfig() {
   .btn-primary { background: var(--gold); color: var(--bg); border-color: var(--gold); font-weight: 700; }
   .btn-primary:hover { background: var(--gold-light); border-color: var(--gold-light); }
   .btn-danger { background: var(--red-dim); color: var(--red); border-color: var(--red); }
-  .table-wrap { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: auto; }
+  .table-wrap { background: var(--card); border: 1px solid var(--border); border-bottom-left-radius: var(--radius); border-bottom-right-radius: var(--radius); overflow-x: auto; }
+  .stb { overflow-x: auto; overflow-y: hidden; height: 10px; border: 1px solid var(--border); border-bottom: none; border-top-left-radius: var(--radius); border-top-right-radius: var(--radius); }
+  .stb > div { height: 10px; }
   .table-wrap table { }
   .table-wrap::-webkit-scrollbar { height: 8px; width: 6px; }
   .table-wrap::-webkit-scrollbar-track { background: var(--card2); border-radius: 4px; }
@@ -1024,7 +1026,8 @@ async function saveConfig() {
         </button>
         <button class="btn" onclick="exportCSV()">⤓ CSV</button>
       </div>
-      <div class="table-wrap">
+      <div class="stb" id="stb"><div id="stb-inner"></div></div>
+      <div class="table-wrap" id="table-wrap">
         <table>
           <thead>
             <tr>
@@ -1868,6 +1871,7 @@ function renderDemands(){
   const footer = document.getElementById('table-footer');
   if(!arr.length){ tbody.innerHTML=''; if(empty) empty.classList.remove('hidden'); if(footer) footer.textContent=''; return; }
   if(empty) empty.classList.add('hidden');
+  if(empty) empty.classList.add('hidden');
   // Controle de colunas por aba
   const tab = currentDemandTab;
   const showTipo    = tab === '';
@@ -1939,7 +1943,16 @@ function renderDemands(){
       ${isComercialTab ? pdvCell : ''}
       <td class="desc" style="${descStyle}" title="${d.descricao||''}">${descDisplay}${annexIcon}${pdvInline}${afInline}</td>
       <td>${d.responsavel||'—'}</td>
-      <td><span class="status-badge ${sc}">${d.status}</span></td>
+      <td><select class="status-badge ${sc}" onchange="quickStatus('${d.id}',this.value)" style="cursor:pointer;border:none;font-family:inherit;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 6px;border-radius:4px">
+      <option value="Recebida" ${d.status==='Recebida'?'selected':''}>Recebida</option>
+      <option value="Fazendo" ${d.status==='Fazendo'?'selected':''}>Fazendo</option>
+      <option value="Em revisão" ${d.status==='Em revisão'?'selected':''}>Em revisão</option>
+      <option value="Aprovação" ${d.status==='Aprovação'?'selected':''}>Aprovação</option>
+      <option value="Alteração" ${d.status==='Alteração'?'selected':''}>Alteração</option>
+      <option value="Enviada" ${d.status==='Enviada'?'selected':''}>Enviada</option>
+      <option value="Aprovado" ${d.status==='Aprovado'?'selected':''}>Aprovado</option>
+      <option value="Duplicada" ${d.status==='Duplicada'?'selected':''}>Duplicada</option>
+    </select></td>
       <td class="mono" style="color:var(--gold);font-weight:600">${d.pecas||0}</td>
       ${versaoCell}
       <td>${arqCell}</td>
@@ -2135,7 +2148,16 @@ function renderPrivate(){
       <td class="mono" style="font-size:11px;color:var(--blue);font-weight:700">${d.cnpj||d.descricao?.slice(0,18)||'—'}</td>
       <td style="font-size:12px">${d.nomeFantasia||'—'}</td>
       <td>${d.responsavel||'—'}</td>
-      <td><span class="status-badge ${sc}">${d.status}</span></td>
+      <td><select class="status-badge ${sc}" onchange="quickStatus('${d.id}',this.value)" style="cursor:pointer;border:none;font-family:inherit;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 6px;border-radius:4px">
+      <option value="Recebida" ${d.status==='Recebida'?'selected':''}>Recebida</option>
+      <option value="Fazendo" ${d.status==='Fazendo'?'selected':''}>Fazendo</option>
+      <option value="Em revisão" ${d.status==='Em revisão'?'selected':''}>Em revisão</option>
+      <option value="Aprovação" ${d.status==='Aprovação'?'selected':''}>Aprovação</option>
+      <option value="Alteração" ${d.status==='Alteração'?'selected':''}>Alteração</option>
+      <option value="Enviada" ${d.status==='Enviada'?'selected':''}>Enviada</option>
+      <option value="Aprovado" ${d.status==='Aprovado'?'selected':''}>Aprovado</option>
+      <option value="Duplicada" ${d.status==='Duplicada'?'selected':''}>Duplicada</option>
+    </select></td>
       <td class="mono" style="color:var(--gold)">${d.pecas||0}</td>
       <td>
         <div style="display:flex;align-items:center;gap:6px">
@@ -2896,10 +2918,32 @@ function updateMyDemandsToggle(){
     btn.innerHTML = `◎ Minhas Demandas`;
   }
 }
+
+async function quickStatus(id, newStatus){
+  const d = state.demands.find(x=>x.id===id);
+  if(!d) return;
+  d.status = newStatus;
+  if(newStatus==='Enviada'||newStatus==='Aprovado') d.dataSaida = today();
+  await saveOneDemand(d);
+  renderDemands();
+  toast(id+' → '+newStatus, 'success');
+}
+function initScrollSync(){
+  const wrap = document.getElementById('table-wrap');
+  const bar  = document.getElementById('stb');
+  const inn  = document.getElementById('stb-inner');
+  if(!wrap||!bar||!inn) return;
+  function sync(){ inn.style.width = wrap.scrollWidth+'px'; }
+  sync(); new ResizeObserver(sync).observe(wrap);
+  bar.addEventListener('scroll', ()=>{ wrap.scrollLeft = bar.scrollLeft; });
+  wrap.addEventListener('scroll', ()=>{ bar.scrollLeft = wrap.scrollLeft; });
+}
+
 function init(){
   // Load from Supabase
   _syncFromSB();
   _startRealtime();
+  setTimeout(initScrollSync, 800);
   // Don't load sample data if Supabase is connected
   setTimeout(()=>{ if(state.demands.length===0) loadSampleData(); }, 2000);
   const now = new Date();
