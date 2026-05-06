@@ -1833,22 +1833,20 @@ function setDemandTab(btn, tab){
   renderDemands();
 }
 function updateTabCounts(){
-  const tabMap = {
-    '': 'all',
-    'Comercial': 'Comercial',
-    'Cartões Private': 'CartosPrivate',
-    'Kits Sazonais': 'KitsSazonais',
-    'Campanhas': 'Campanhas',
-    'Grupo de Vendedores': 'GrupoVendedores',
-    'RH GAC': 'RHGAC',
-    'Outras': 'Outras',
-  };
-  Object.entries(tabMap).forEach(([tipo, id]) => {
-    const el = document.getElementById('tab-count-' + id);
-    if(!el) return;
-    const count = tipo === '' ? state.demands.length : state.demands.filter(d=>d.tipo===tipo).length;
-    el.textContent = count;
+  const container = document.getElementById('demand-tabs');
+  const allTypes = new Set();
+  state.demands.forEach(d=>{
+    (d.tiposArte||[]).forEach(t=>{ if(t) allTypes.add(t); });
+    if(!d.tiposArte?.length && d.tipo) allTypes.add(d.tipo);
   });
+  const current = currentDemandTab;
+  let html = `<button class="demand-tab ${current===''?'active':''}" data-tab="" onclick="setDemandTab(this,'')">Todas <span class="tab-count">${state.demands.length}</span></button>`;
+  [...allTypes].sort().forEach(tipo=>{
+    const count = state.demands.filter(d=>(d.tiposArte||[]).includes(tipo)||d.tipo===tipo).length;
+    const safe = tipo.replace(/'/g,"\'").replace(/"/g,'&quot;');
+    html += `<button class="demand-tab ${current===tipo?'active':''}" data-tab="${safe}" onclick="setDemandTab(this,'${safe}')">${tipo} <span class="tab-count">${count}</span></button>`;
+  });
+  container.innerHTML = html;
 }
 function getFilteredDemands(){
   const q = document.getElementById('search-input')?.value?.toLowerCase()||'';
@@ -1856,7 +1854,7 @@ function getFilteredDemands(){
   const fr = document.getElementById('filter-resp')?.value||'';
   let arr = [...state.demands];
   if(q) arr = arr.filter(d=>(d.descricao||'').toLowerCase().includes(q)||(d.solicitante||'').toLowerCase().includes(q)||(d.responsavel||'').toLowerCase().includes(q)||(d.cnpj||'').replace(/\D/g,'').includes(q.replace(/\D/g,''))||(d.nomeFantasia||'').toLowerCase().includes(q)||(d.pdv||'').toLowerCase().includes(q));
-  if(currentDemandTab) arr = arr.filter(d=>d.tipo===currentDemandTab);
+  if(currentDemandTab) arr = arr.filter(d=>(d.tiposArte||[]).includes(currentDemandTab)||d.tipo===currentDemandTab);
   if(fs) arr = arr.filter(d=>d.status===fs);
   if(fr) arr = arr.filter(d=>d.responsavel===fr);
   if(myDemandsOnly && activeMember) arr = arr.filter(d=>d.responsavel===activeMember);
@@ -1901,7 +1899,8 @@ function renderDemands(){
     // ── PDV em evidência ─────────────────────────────────────────────
     const pdvCell = `<td style="font-size:12px;font-weight:600;color:var(--blue)">${d.pdv||'—'}</td>`;
     // ── Tipo ─────────────────────────────────────────────────────────
-    const tipoCell = showTipo ? `<td><span style="font-size:11px;color:${TIPO_COLORS[d.tipo]||'var(--text2)'}">●</span> ${d.tipo||'—'}</td>` : '';
+    const tiposStr = (d.tiposArte||[]).join(' · ')||(d.tipo||'—');
+    const tipoCell = showTipo ? `<td style="font-size:12px"><div style="font-weight:500;color:var(--text2)">${tiposStr}</div><div style="font-size:10px;color:var(--text3);margin-top:1px">${d.tipo||''}</div></td>` : '';
     // ── Descrição: Private mostra CNPJ em destaque ───────────────────
     const descDisplay = isPrivateTab
       ? `<span style="font-family:var(--mono);font-size:11px;color:var(--blue);font-weight:700">${d.cnpj||''}</span>${d.nomeFantasia?`<span style="color:var(--text3);font-size:11px"> · ${d.nomeFantasia}</span>`:''}` 
@@ -1942,7 +1941,11 @@ function renderDemands(){
       ${tipoCell}
       ${isComercialTab ? pdvCell : ''}
       <td class="desc" style="${descStyle}" title="${d.descricao||''}">${descDisplay}${annexIcon}${pdvInline}${afInline}</td>
-      <td>${d.responsavel||'—'}</td>
+      <td><select onchange="quickResp('${d.id}',this.value)" style="font-size:12px;border:none;background:transparent;cursor:pointer;color:var(--text);max-width:110px">
+        <option value="">— atribuir —</option>
+        ${(state.config.team||[]).map(m=>`<option value="${m.name}" ${d.responsavel===m.name?'selected':''}>${m.name}</option>`).join('')}
+        ${d.responsavel&&!(state.config.team||[]).find(m=>m.name===d.responsavel)?`<option value="${d.responsavel}" selected>${d.responsavel}</option>`:''}
+      </select></td>
       <td><select class="status-badge ${sc}" onchange="quickStatus('${d.id}',this.value)" style="cursor:pointer;border:none;font-family:inherit;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 6px;border-radius:4px">
       <option value="Recebida" ${d.status==='Recebida'?'selected':''}>Recebida</option>
       <option value="Fazendo" ${d.status==='Fazendo'?'selected':''}>Fazendo</option>
@@ -2919,6 +2922,15 @@ function updateMyDemandsToggle(){
   }
 }
 
+
+async function quickResp(id, name){
+  const d = state.demands.find(x=>x.id===id);
+  if(!d) return;
+  d.responsavel = name;
+  await saveOneDemand(d);
+  renderDemands();
+  if(name) toast(id+' → '+name, 'success');
+}
 async function quickStatus(id, newStatus){
   const d = state.demands.find(x=>x.id===id);
   if(!d) return;
