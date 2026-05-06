@@ -6,67 +6,61 @@
 <title>Controle Marketing THE — Design GAC</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
-// ── Supabase setup ──────────────────────────────────────
-const _SB = supabase.createClient(
-  "https://cirbxpkjouymljlbujek.supabase.co",
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpcmJ4cGtqb3V5bWxqbGJ1amVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMTE2NjksImV4cCI6MjA5MjU4NzY2OX0.XlQYpQO9wjrS-6IDlcdKP-s6iJIBZzyUX_b8JvxTmaA"
-);
-
-// Auto-clear localStorage on load
+// Auto-limpa localStorage na abertura
 localStorage.removeItem('gac_demands');
 localStorage.removeItem('gac_config');
 
-// Sync from Supabase
-async function _syncFromSB() {
-  const {data: demands} = await _SB.from('demands').select('*');
+const _SB = supabase.createClient("https://cirbxpkjouymljlbujek.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpcmJ4cGtqb3V5bWxqbGJ1amVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMTE2NjksImV4cCI6MjA5MjU4NzY2OX0.XlQYpQO9wjrS-6IDlcdKP-s6iJIBZzyUX_b8JvxTmaA");
+
+async function _syncFromSB(){
+  const {data:demands} = await _SB.from('demands').select('*');
   if(demands) state.demands = demands;
-  const {data: cfg} = await _SB.from('config').select('*').eq('id','main').single();
+  const {data:cfg} = await _SB.from('config').select('*').eq('id','main').single();
   if(cfg && cfg.data) state.config = {...state.config, ...cfg.data};
   if(typeof renderView==='function') renderView(currentView);
   if(typeof updateLateBadge==='function') updateLateBadge();
-  // Status dot
   const dot=document.getElementById('fb-dot');
   const lbl=document.getElementById('fb-label');
   if(dot) dot.style.background='#4caf50';
   if(lbl) lbl.textContent='Supabase conectado';
 }
 
-// Realtime
-function _startRealtime() {
+function _startRealtime(){
   _SB.channel('demands-rt')
     .on('postgres_changes',{event:'*',schema:'public',table:'demands'}, payload => {
-      if(payload.eventType==='INSERT') {
-        if(!state.demands.find(d=>d.id===payload.new.id)) state.demands.push(payload.new);
-      } else if(payload.eventType==='UPDATE') {
-        const i=state.demands.findIndex(d=>d.id===payload.new.id);
-        if(i>=0) state.demands[i]=payload.new;
-      } else if(payload.eventType==='DELETE') {
-        state.demands=state.demands.filter(d=>d.id!==payload.old.id);
-      }
+      if(payload.eventType==='INSERT'){ if(!state.demands.find(d=>d.id===payload.new.id)) state.demands.push(payload.new); }
+      else if(payload.eventType==='UPDATE'){ const i=state.demands.findIndex(d=>d.id===payload.new.id); if(i>=0) state.demands[i]=payload.new; }
+      else if(payload.eventType==='DELETE'){ state.demands=state.demands.filter(d=>d.id!==payload.old.id); }
       if(typeof renderView==='function') renderView(currentView);
       if(typeof updateLateBadge==='function') updateLateBadge();
-    })
-    .subscribe();
+    }).subscribe();
 }
 
-// Save one demand to Supabase
-async function saveOneDemand(demand) {
-  const safe = {...demand};
-  if(safe.arquivo && safe.arquivo.data) safe.arquivo = {name:safe.arquivo.name,size:safe.arquivo.size,type:safe.arquivo.type};
-  if(safe.arquivoProduzido && safe.arquivoProduzido.data) safe.arquivoProduzido = {name:safe.arquivoProduzido.name,size:safe.arquivoProduzido.size,type:safe.arquivoProduzido.type,sessionOnly:true};
-  if(safe.anexos) safe.anexos = (safe.anexos||[]).map(f=>f&&f.data?{name:f.name,size:f.size,type:f.type}:f);
-  Object.keys(safe).forEach(k=>{if(safe[k]===undefined) delete safe[k];});
-  const {error} = await _SB.from('demands').upsert(safe);
-  if(error) console.warn('saveOneDemand error:', error);
+async function saveOneDemand(demand){
+  const safe={...demand};
+  if(safe.arquivo?.data) safe.arquivo={name:safe.arquivo.name,size:safe.arquivo.size,type:safe.arquivo.type};
+  if(safe.arquivoProduzido?.data) safe.arquivoProduzido={name:safe.arquivoProduzido.name,size:safe.arquivoProduzido.size,type:safe.arquivoProduzido.type,sessionOnly:true};
+  if(safe.anexos) safe.anexos=(safe.anexos||[]).map(f=>f&&f.data?{name:f.name,size:f.size,type:f.type}:f);
+  Object.keys(safe).forEach(k=>{if(safe[k]===undefined)delete safe[k];});
+  const {error}=await _SB.from('demands').upsert(safe);
+  if(error) console.warn('saveOneDemand:',error);
 }
 
-async function deleteOneDemand(id) {
-  const {error} = await _SB.from('demands').delete().eq('id', id);
-  if(error) console.warn('deleteOneDemand error:', error);
+async function deleteOneDemand(id){
+  await _SB.from('demands').delete().eq('id',id);
 }
 
-async function saveConfig() {
-  await _SB.from('config').upsert({id:'main', data:{holidays:state.config.holidays||[],team:state.config.team||[]}});
+async function saveConfig(){
+  await _SB.from('config').upsert({id:'main',data:{holidays:state.config.holidays||[],team:state.config.team||[]}});
+}
+
+async function quickResp(id, name){
+  const d=state.demands.find(x=>x.id===id);
+  if(!d) return;
+  d.responsavel=name;
+  await saveOneDemand(d);
+  renderDemands();
+  if(name) toast(id+' → '+name,'success');
 }
 </script>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -338,10 +332,8 @@ async function saveConfig() {
   .btn-primary { background: var(--gold); color: var(--bg); border-color: var(--gold); font-weight: 700; }
   .btn-primary:hover { background: var(--gold-light); border-color: var(--gold-light); }
   .btn-danger { background: var(--red-dim); color: var(--red); border-color: var(--red); }
-  .table-wrap { background: var(--card); border: 1px solid var(--border); border-bottom-left-radius: var(--radius); border-bottom-right-radius: var(--radius); overflow-x: auto; }
-  .stb { overflow-x: auto; overflow-y: hidden; height: 10px; border: 1px solid var(--border); border-bottom: none; border-top-left-radius: var(--radius); border-top-right-radius: var(--radius); }
-  .stb > div { height: 10px; }
-  .table-wrap table { }
+  .table-wrap { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: auto; transform: rotateX(180deg); }
+  .table-wrap table { transform: rotateX(180deg); }
   .table-wrap::-webkit-scrollbar { height: 8px; width: 6px; }
   .table-wrap::-webkit-scrollbar-track { background: var(--card2); border-radius: 4px; }
   .table-wrap::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
@@ -954,26 +946,8 @@ async function saveConfig() {
     </div>
     <div class="period-filter" id="period-filter" style="display:none">
       <button class="period-btn" onclick="setPeriod('week')">Semana</button>
-      <button class="period-btn active" onclick="setPeriod('month')">Mês atual</button>
-      <button class="period-btn" onclick="setPeriod('custom')">Mês específico</button>
+      <button class="period-btn active" onclick="setPeriod('month')">Mês</button>
       <button class="period-btn" onclick="setPeriod('all')">Tudo</button>
-      <select id="custom-month-sel" style="display:none;font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);cursor:pointer" onchange="setPeriod('custom')">
-        <option value="2026-01">Janeiro 2026</option>
-        <option value="2026-02">Fevereiro 2026</option>
-        <option value="2026-03">Março 2026</option>
-        <option value="2026-04" selected>Abril 2026</option>
-        <option value="2026-05">Maio 2026</option>
-        <option value="2026-06">Junho 2026</option>
-        <option value="2026-07">Julho 2026</option>
-        <option value="2026-08">Agosto 2026</option>
-        <option value="2026-09">Setembro 2026</option>
-        <option value="2026-10">Outubro 2026</option>
-        <option value="2026-11">Novembro 2026</option>
-        <option value="2026-12">Dezembro 2026</option>
-        <option value="2025-12">Dezembro 2025</option>
-        <option value="2025-11">Novembro 2025</option>
-        <option value="2025-10">Outubro 2025</option>
-      </select>
     </div>
     <button class="btn-add-demand" onclick="openModal()" style="display:none">✚ Nova Demanda</button>
   </div>
@@ -1026,8 +1000,7 @@ async function saveConfig() {
         </button>
         <button class="btn" onclick="exportCSV()">⤓ CSV</button>
       </div>
-      <div class="stb" id="stb"><div id="stb-inner"></div></div>
-      <div class="table-wrap" id="table-wrap">
+      <div class="table-wrap">
         <table>
           <thead>
             <tr>
@@ -1278,7 +1251,6 @@ async function saveConfig() {
         <!-- FILE UPLOAD substituindo o campo de link -->
         <div class="form-group full" style="display:flex;flex-direction:column;align-items:center">
           <label class="form-label" style="width:100%;text-align:center">Arquivo / Material</label>
-          <div id="portal-anexos" style="display:none;margin-bottom:12px"></div>
           <div class="file-upload-area" id="upload-area" onclick="document.getElementById('f-arquivo').click()" style="width:100%;max-width:340px;text-align:center">
             <label class="file-upload-label" id="upload-label" style="align-items:center;justify-content:center">
               <span class="icon">📎</span>
@@ -1518,11 +1490,8 @@ const TIPO_COLORS = {
 };
 const CHART_COLORS = ['#1a3a6b','#1565c0','#1a8a4a','#6a3d9a','#c0521a','#b7770d','#c0392b','#5a7da0','#0d8a8a'];
 
-/* ═══════════════════════════════════════════════════
-   STORAGE — Supabase only, no localStorage
-═══════════════════════════════════════════════════ */
 function save(){ saveConfig(); }
-function load(){ /* disabled — data comes from Supabase */ }
+function load(){ /* Supabase */ }
 
 /* ═══════════════════════════════════════════════════
    UTILS
@@ -1619,39 +1588,6 @@ function loadFilePreview(demand){
     area.style.display='block';
     row.style.display='none';
   }
-  // Show portal attachments (anexos from solicitante)
-  const anexosArea = document.getElementById('portal-anexos');
-  if(anexosArea){
-    // Combine arquivo + anexos arrays
-    let allFiles = [];
-    if(demand?.arquivo && demand.arquivo.name) allFiles.push(demand.arquivo);
-    const extras = (demand?.anexos||[]).filter(f=>f&&f.name&&f.url);
-    // avoid duplicate
-    extras.forEach(f=>{ if(!allFiles.find(x=>x.name===f.name)) allFiles.push(f); });
-    
-    if(allFiles.length>0){
-      anexosArea.style.display='block';
-      anexosArea.innerHTML = '<div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px">📎 Arquivos do solicitante ('+allFiles.length+')</div>' +
-        allFiles.map(f=>{
-          const isImg = f.type && f.type.startsWith('image/');
-          const isVid = f.type && f.type.startsWith('video/');
-          const icon = isImg?'🖼':isVid?'🎬':'📄';
-          const size = f.size ? (f.size>1048576?(f.size/1048576).toFixed(1)+'MB':(f.size/1024).toFixed(0)+'KB') : '';
-          const preview = isImg && f.url ? `<img src="${f.url}" style="width:36px;height:36px;object-fit:cover;border-radius:4px;flex-shrink:0">` : `<span style="font-size:22px;flex-shrink:0">${icon}</span>`;
-          return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;margin-bottom:6px">
-            ${preview}
-            <div style="flex:1;min-width:0">
-              <div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${f.name}</div>
-              ${size?`<div style="font-size:10px;color:var(--text3)">${size}</div>`:''}
-            </div>
-            ${f.url?`<a href="${f.url}" target="_blank" download style="font-size:11px;color:var(--gold);font-weight:600;white-space:nowrap;background:rgba(26,74,122,.08);padding:4px 8px;border-radius:4px;border:1px solid var(--border)">Abrir ↗</a>`:'<span style="font-size:10px;color:var(--text3)">sem URL</span>'}
-          </div>`;
-        }).join('');
-    } else {
-      anexosArea.style.display='none';
-      anexosArea.innerHTML='';
-    }
-  }
 }
 
 /* ═══════════════════════════════════════════════════
@@ -1661,16 +1597,9 @@ function filterByPeriod(demands){
   const now = new Date();
   return demands.filter(d=>{
     if(!d.dataEntrada) return true;
-    const entry = new Date(d.dataEntrada+'T12:00:00');
+    const entry = new Date(d.dataEntrada);
     if(currentPeriod==='week'){ const wa=new Date(now); wa.setDate(wa.getDate()-7); return entry>=wa; }
     if(currentPeriod==='month') return entry.getMonth()===now.getMonth()&&entry.getFullYear()===now.getFullYear();
-    if(currentPeriod==='custom'){
-      const sel=document.getElementById('custom-month-sel');
-      if(sel&&sel.value){
-        const [y,m]=sel.value.split('-').map(Number);
-        return entry.getMonth()===(m-1)&&entry.getFullYear()===y;
-      }
-    }
     return true;
   });
 }
@@ -1704,8 +1633,6 @@ function navigate(view){
 }
 function setPeriod(p){
   currentPeriod = p;
-  const sel = document.getElementById('custom-month-sel');
-  if(sel) sel.style.display = p==='custom' ? 'block' : 'none';
   document.querySelectorAll('.period-btn').forEach(b=>{
     b.classList.toggle('active', b.textContent.toLowerCase().includes(p==='week'?'semana':p==='month'?'mês':'tudo'));
   });
@@ -1833,20 +1760,22 @@ function setDemandTab(btn, tab){
   renderDemands();
 }
 function updateTabCounts(){
-  const container = document.getElementById('demand-tabs');
-  const allTypes = new Set();
-  state.demands.forEach(d=>{
-    (d.tiposArte||[]).forEach(t=>{ if(t) allTypes.add(t); });
-    if(!d.tiposArte?.length && d.tipo) allTypes.add(d.tipo);
+  const tabMap = {
+    '': 'all',
+    'Comercial': 'Comercial',
+    'Cartões Private': 'CartosPrivate',
+    'Kits Sazonais': 'KitsSazonais',
+    'Campanhas': 'Campanhas',
+    'Grupo de Vendedores': 'GrupoVendedores',
+    'RH GAC': 'RHGAC',
+    'Outras': 'Outras',
+  };
+  Object.entries(tabMap).forEach(([tipo, id]) => {
+    const el = document.getElementById('tab-count-' + id);
+    if(!el) return;
+    const count = tipo === '' ? state.demands.length : state.demands.filter(d=>d.tipo===tipo).length;
+    el.textContent = count;
   });
-  const current = currentDemandTab;
-  let html = `<button class="demand-tab ${current===''?'active':''}" data-tab="" onclick="setDemandTab(this,'')">Todas <span class="tab-count">${state.demands.length}</span></button>`;
-  [...allTypes].sort().forEach(tipo=>{
-    const count = state.demands.filter(d=>(d.tiposArte||[]).includes(tipo)||d.tipo===tipo).length;
-    const safe = tipo.replace(/'/g,"\'").replace(/"/g,'&quot;');
-    html += `<button class="demand-tab ${current===tipo?'active':''}" data-tab="${safe}" onclick="setDemandTab(this,'${safe}')">${tipo} <span class="tab-count">${count}</span></button>`;
-  });
-  container.innerHTML = html;
 }
 function getFilteredDemands(){
   const q = document.getElementById('search-input')?.value?.toLowerCase()||'';
@@ -1854,7 +1783,7 @@ function getFilteredDemands(){
   const fr = document.getElementById('filter-resp')?.value||'';
   let arr = [...state.demands];
   if(q) arr = arr.filter(d=>(d.descricao||'').toLowerCase().includes(q)||(d.solicitante||'').toLowerCase().includes(q)||(d.responsavel||'').toLowerCase().includes(q)||(d.cnpj||'').replace(/\D/g,'').includes(q.replace(/\D/g,''))||(d.nomeFantasia||'').toLowerCase().includes(q)||(d.pdv||'').toLowerCase().includes(q));
-  if(currentDemandTab) arr = arr.filter(d=>(d.tiposArte||[]).includes(currentDemandTab)||d.tipo===currentDemandTab);
+  if(currentDemandTab) arr = arr.filter(d=>d.tipo===currentDemandTab);
   if(fs) arr = arr.filter(d=>d.status===fs);
   if(fr) arr = arr.filter(d=>d.responsavel===fr);
   if(myDemandsOnly && activeMember) arr = arr.filter(d=>d.responsavel===activeMember);
@@ -1867,9 +1796,7 @@ function renderDemands(){
   const tbody = document.getElementById('demands-tbody');
   const empty = document.getElementById('demands-empty');
   const footer = document.getElementById('table-footer');
-  if(!arr.length){ tbody.innerHTML=''; if(empty) empty.classList.remove('hidden'); if(footer) footer.textContent=''; return; }
-  if(empty) empty.classList.add('hidden');
-  if(empty) empty.classList.add('hidden');
+  if(!arr.length){ tbody.innerHTML=''; empty.classList.remove('hidden'); footer.textContent=''; return; }
   // Controle de colunas por aba
   const tab = currentDemandTab;
   const showTipo    = tab === '';
@@ -1899,27 +1826,20 @@ function renderDemands(){
     // ── PDV em evidência ─────────────────────────────────────────────
     const pdvCell = `<td style="font-size:12px;font-weight:600;color:var(--blue)">${d.pdv||'—'}</td>`;
     // ── Tipo ─────────────────────────────────────────────────────────
-    const tiposStr = (d.tiposArte||[]).join(' · ')||(d.tipo||'—');
-    const tipoCell = showTipo ? `<td style="font-size:12px"><div style="font-weight:500;color:var(--text2)">${tiposStr}</div><div style="font-size:10px;color:var(--text3);margin-top:1px">${d.tipo||''}</div></td>` : '';
+    const tipoCell = showTipo ? `<td><span style="font-size:11px;color:${TIPO_COLORS[d.tipo]||'var(--text2)'}">●</span> ${d.tipo||'—'}</td>` : '';
     // ── Descrição: Private mostra CNPJ em destaque ───────────────────
     const descDisplay = isPrivateTab
       ? `<span style="font-family:var(--mono);font-size:11px;color:var(--blue);font-weight:700">${d.cnpj||''}</span>${d.nomeFantasia?`<span style="color:var(--text3);font-size:11px"> · ${d.nomeFantasia}</span>`:''}` 
       : (d.descricao||'—');
-    // Anexos do portal (enviados pelo solicitante)
-    // Support both old (português) and new (english) field names
-    const portalAnexos = (d.anexos||[]).filter(f=>f&&(f.name||f.nome)).map(f=>({
-      name: f.name||f.nome||'arquivo',
-      size: f.size||f.tamanho,
-      type: f.type||f.tipo||'',
-      url: f.url || null,
-      path: f.path || null
-    }));
-    const annexIcon = portalAnexos.length > 0
-      ? portalAnexos.map(f=>{
-          const icon = f.type&&f.type.startsWith('image/')?'🖼':f.type&&f.type.startsWith('video/')?'🎬':'📄';
-          return `<a href="${f.url}" target="_blank" title="${f.name}" style="display:inline-flex;align-items:center;gap:2px;background:rgba(21,101,192,.08);border:1px solid var(--border);border-radius:4px;padding:2px 6px;font-size:10px;color:var(--blue);text-decoration:none;margin-left:3px;white-space:nowrap">${icon} ${f.name.length>12?f.name.slice(0,10)+'…':f.name}</a>`;
+    const _anexos = (d.anexos||[]).filter(f=>f&&(f.name||f.nome)).map(f=>({name:f.name||f.nome,type:f.type||f.tipo||'',url:f.url||null}));
+    const annexIcon = _anexos.length>0
+      ? _anexos.map(f=>{
+          const ic=f.type.startsWith('image/')?'🖼':f.type.startsWith('video/')?'🎬':'📄';
+          const nm=(f.name||'').length>12?(f.name||'').slice(0,10)+'…':(f.name||'arquivo');
+          return f.url?`<a href="${f.url}" target="_blank" style="display:inline-flex;align-items:center;gap:2px;background:#eef3fb;border:1px solid #c7d9f0;border-radius:4px;padding:2px 6px;font-size:10px;color:#1a3a6b;text-decoration:none;margin-left:3px;font-weight:600">${ic} ${nm}</a>`
+            :`<span style="display:inline-flex;align-items:center;gap:2px;background:#f1f5f9;border:1px solid #d0dce8;border-radius:4px;padding:2px 6px;font-size:10px;color:#5a7da0;margin-left:3px">${ic} ${nm}</span>`;
         }).join('')
-      : (d.arquivo&&d.arquivo.url ? `<a href="${d.arquivo.url}" target="_blank" title="${d.arquivo.name}" style="display:inline-flex;align-items:center;gap:2px;background:rgba(21,101,192,.08);border:1px solid var(--border);border-radius:4px;padding:2px 6px;font-size:10px;color:var(--blue);text-decoration:none;margin-left:3px">📎 ${d.arquivo.name.length>12?d.arquivo.name.slice(0,10)+'…':d.arquivo.name}</a>` : '');
+      : (d.arquivo?.url?`<a href="${d.arquivo.url}" target="_blank" style="display:inline-flex;align-items:center;gap:2px;background:#eef3fb;border:1px solid #c7d9f0;border-radius:4px;padding:2px 6px;font-size:10px;color:#1a3a6b;text-decoration:none;margin-left:3px;font-weight:600">📎 ${(d.arquivo.name||'').slice(0,10)}</a>`:'');
     const pdvInline = (!isComercialTab && d.pdv) ? `<span style="font-size:10px;color:var(--text3);margin-left:4px">📍${d.pdv.slice(0,14)}</span>` : '';
     const afInline  = d.afinidade ? `<span style="font-size:10px;color:var(--purple);margin-left:4px;font-weight:600">●${d.afinidade}</span>` : '';
     const descStyle = isPrivateTab ? 'max-width:260px' : 'max-width:200px';
@@ -1941,21 +1861,12 @@ function renderDemands(){
       ${tipoCell}
       ${isComercialTab ? pdvCell : ''}
       <td class="desc" style="${descStyle}" title="${d.descricao||''}">${descDisplay}${annexIcon}${pdvInline}${afInline}</td>
-      <td><select onchange="quickResp('${d.id}',this.value)" style="font-size:12px;border:none;background:transparent;cursor:pointer;color:var(--text);max-width:110px">
+      <td><select onchange="quickResp('${d.id}',this.value)" style="font-size:12px;border:1px solid var(--border);background:var(--card);border-radius:4px;padding:3px 6px;cursor:pointer;color:var(--text);max-width:120px">
         <option value="">— atribuir —</option>
         ${(state.config.team||[]).map(m=>`<option value="${m.name}" ${d.responsavel===m.name?'selected':''}>${m.name}</option>`).join('')}
         ${d.responsavel&&!(state.config.team||[]).find(m=>m.name===d.responsavel)?`<option value="${d.responsavel}" selected>${d.responsavel}</option>`:''}
       </select></td>
-      <td><select class="status-badge ${sc}" onchange="quickStatus('${d.id}',this.value)" style="cursor:pointer;border:none;font-family:inherit;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 6px;border-radius:4px">
-      <option value="Recebida" ${d.status==='Recebida'?'selected':''}>Recebida</option>
-      <option value="Fazendo" ${d.status==='Fazendo'?'selected':''}>Fazendo</option>
-      <option value="Em revisão" ${d.status==='Em revisão'?'selected':''}>Em revisão</option>
-      <option value="Aprovação" ${d.status==='Aprovação'?'selected':''}>Aprovação</option>
-      <option value="Alteração" ${d.status==='Alteração'?'selected':''}>Alteração</option>
-      <option value="Enviada" ${d.status==='Enviada'?'selected':''}>Enviada</option>
-      <option value="Aprovado" ${d.status==='Aprovado'?'selected':''}>Aprovado</option>
-      <option value="Duplicada" ${d.status==='Duplicada'?'selected':''}>Duplicada</option>
-    </select></td>
+      <td><span class="status-badge ${sc}">${d.status}</span></td>
       <td class="mono" style="color:var(--gold);font-weight:600">${d.pecas||0}</td>
       ${versaoCell}
       <td>${arqCell}</td>
@@ -2151,16 +2062,7 @@ function renderPrivate(){
       <td class="mono" style="font-size:11px;color:var(--blue);font-weight:700">${d.cnpj||d.descricao?.slice(0,18)||'—'}</td>
       <td style="font-size:12px">${d.nomeFantasia||'—'}</td>
       <td>${d.responsavel||'—'}</td>
-      <td><select class="status-badge ${sc}" onchange="quickStatus('${d.id}',this.value)" style="cursor:pointer;border:none;font-family:inherit;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 6px;border-radius:4px">
-      <option value="Recebida" ${d.status==='Recebida'?'selected':''}>Recebida</option>
-      <option value="Fazendo" ${d.status==='Fazendo'?'selected':''}>Fazendo</option>
-      <option value="Em revisão" ${d.status==='Em revisão'?'selected':''}>Em revisão</option>
-      <option value="Aprovação" ${d.status==='Aprovação'?'selected':''}>Aprovação</option>
-      <option value="Alteração" ${d.status==='Alteração'?'selected':''}>Alteração</option>
-      <option value="Enviada" ${d.status==='Enviada'?'selected':''}>Enviada</option>
-      <option value="Aprovado" ${d.status==='Aprovado'?'selected':''}>Aprovado</option>
-      <option value="Duplicada" ${d.status==='Duplicada'?'selected':''}>Duplicada</option>
-    </select></td>
+      <td><span class="status-badge ${sc}">${d.status}</span></td>
       <td class="mono" style="color:var(--gold)">${d.pecas||0}</td>
       <td>
         <div style="display:flex;align-items:center;gap:6px">
@@ -2498,18 +2400,15 @@ function saveDemand(){
   } else {
     state.demands.push(demand);
   }
-  saveOneDemand(demand);
-  closeModal();
+  saveOneDemand(demand); closeModal();
   toast(editingId?'Demanda atualizada!':'Demanda criada!','success');
-  // Realtime will update the view
 }
 function editDemand(id){ openModal(id); }
 function deleteDemand(id){
   const d = state.demands.find(x=>x.id===id);
   if(!confirm(`Excluir ${d?.id}?\n"${d?.descricao?.slice(0,60)||''}"`)) return;
   state.demands = state.demands.filter(x=>x.id!==id);
-  deleteOneDemand(id);
-  renderView(currentView);
+  deleteOneDemand(id); renderView(currentView);
   toast('Demanda excluída','warning');
 }
 
@@ -2756,18 +2655,8 @@ function saveSolicitation(){
   const anexos = Object.values(slotFiles).filter(Boolean);
   const id = genId();
   const prazoIso = addWorkingDays(today(), 5);
-  const nd = {
-    id, dataEntrada: today(), prazo: prazoIso, dataSaida: '',
-    solicitante, tipo: setor,
-    tiposArte,
-    descricao: `[${tiposArte.join(', ')}] ${descricao}`,
-    responsavel: '', status: 'Recebida', pecas: tiposArte.length,
-    versaoFinal: '', arquivo: anexos[0]||null, anexos, obs,
-    pdv, afinidade,
-  };
-  state.demands.push(nd);
-  saveOneDemand(nd);
-  renderMyDemands();
+  const nd={id,dataEntrada:today(),prazo:prazoIso,dataSaida:'',solicitante,tipo:setor,tiposArte,descricao:`[${tiposArte.join(', ')}] ${descricao}`,responsavel:'',status:'Recebida',pecas:tiposArte.length,versaoFinal:'',arquivo:anexos[0]||null,anexos,obs,pdv,afinidade};
+  state.demands.push(nd); saveOneDemand(nd); renderMyDemands();
   // Limpar formulário
   document.getElementById('s-descricao').value = '';
   document.getElementById('s-obs').value = '';
@@ -2921,43 +2810,10 @@ function updateMyDemandsToggle(){
     btn.innerHTML = `◎ Minhas Demandas`;
   }
 }
-
-
-async function quickResp(id, name){
-  const d = state.demands.find(x=>x.id===id);
-  if(!d) return;
-  d.responsavel = name;
-  await saveOneDemand(d);
-  renderDemands();
-  if(name) toast(id+' → '+name, 'success');
-}
-async function quickStatus(id, newStatus){
-  const d = state.demands.find(x=>x.id===id);
-  if(!d) return;
-  d.status = newStatus;
-  if(newStatus==='Enviada'||newStatus==='Aprovado') d.dataSaida = today();
-  await saveOneDemand(d);
-  renderDemands();
-  toast(id+' → '+newStatus, 'success');
-}
-function initScrollSync(){
-  const wrap = document.getElementById('table-wrap');
-  const bar  = document.getElementById('stb');
-  const inn  = document.getElementById('stb-inner');
-  if(!wrap||!bar||!inn) return;
-  function sync(){ inn.style.width = wrap.scrollWidth+'px'; }
-  sync(); new ResizeObserver(sync).observe(wrap);
-  bar.addEventListener('scroll', ()=>{ wrap.scrollLeft = bar.scrollLeft; });
-  wrap.addEventListener('scroll', ()=>{ bar.scrollLeft = wrap.scrollLeft; });
-}
-
 function init(){
-  // Load from Supabase
   _syncFromSB();
   _startRealtime();
-  setTimeout(initScrollSync, 800);
-  // Don't load sample data if Supabase is connected
-  setTimeout(()=>{ if(state.demands.length===0) loadSampleData(); }, 2000);
+  setTimeout(()=>{ if(state.demands.length===0) loadSampleData(); },2500);
   const now = new Date();
   document.getElementById('sidebar-date').textContent = now.toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'short',year:'numeric'});
   Chart.defaults.color = '#5a7da0';
