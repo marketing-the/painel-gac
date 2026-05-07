@@ -6,60 +6,47 @@
 <title>Controle Marketing THE — Design GAC</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
-// Auto-limpa localStorage na abertura
 localStorage.removeItem('gac_demands');
 localStorage.removeItem('gac_config');
-
 const _SB = supabase.createClient("https://cirbxpkjouymljlbujek.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpcmJ4cGtqb3V5bWxqbGJ1amVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMTE2NjksImV4cCI6MjA5MjU4NzY2OX0.XlQYpQO9wjrS-6IDlcdKP-s6iJIBZzyUX_b8JvxTmaA");
-
 async function _syncFromSB(){
-  const {data:demands} = await _SB.from('demands').select('*');
-  if(demands) state.demands = demands;
-  const {data:cfg} = await _SB.from('config').select('*').eq('id','main').single();
-  if(cfg && cfg.data) state.config = {...state.config, ...cfg.data};
+  const {data:demands}=await _SB.from('demands').select('*');
+  if(demands) state.demands=demands;
+  const {data:cfg}=await _SB.from('config').select('*').eq('id','main').single();
+  if(cfg&&cfg.data) state.config={...state.config,...cfg.data};
   if(typeof renderView==='function') renderView(currentView);
   if(typeof updateLateBadge==='function') updateLateBadge();
   const dot=document.getElementById('fb-dot');
   const lbl=document.getElementById('fb-label');
   if(dot) dot.style.background='#4caf50';
-  if(lbl) lbl.textContent='Supabase conectado';
+  if(lbl) lbl.textContent='Conectado';
 }
-
 function _startRealtime(){
-  _SB.channel('demands-rt')
-    .on('postgres_changes',{event:'*',schema:'public',table:'demands'}, payload => {
-      if(payload.eventType==='INSERT'){ if(!state.demands.find(d=>d.id===payload.new.id)) state.demands.push(payload.new); }
-      else if(payload.eventType==='UPDATE'){ const i=state.demands.findIndex(d=>d.id===payload.new.id); if(i>=0) state.demands[i]=payload.new; }
-      else if(payload.eventType==='DELETE'){ state.demands=state.demands.filter(d=>d.id!==payload.old.id); }
-      if(typeof renderView==='function') renderView(currentView);
-      if(typeof updateLateBadge==='function') updateLateBadge();
-    }).subscribe();
+  _SB.channel('rt').on('postgres_changes',{event:'*',schema:'public',table:'demands'},p=>{
+    if(p.eventType==='INSERT'){ if(!state.demands.find(d=>d.id===p.new.id)) state.demands.push(p.new); }
+    else if(p.eventType==='UPDATE'){ const i=state.demands.findIndex(d=>d.id===p.new.id); if(i>=0) state.demands[i]=p.new; }
+    else if(p.eventType==='DELETE'){ state.demands=state.demands.filter(d=>d.id!==p.old.id); }
+    if(typeof renderView==='function') renderView(currentView);
+    if(typeof updateLateBadge==='function') updateLateBadge();
+  }).subscribe();
 }
-
 async function saveOneDemand(demand){
   const safe={...demand};
   if(safe.arquivo?.data) safe.arquivo={name:safe.arquivo.name,size:safe.arquivo.size,type:safe.arquivo.type};
   if(safe.arquivoProduzido?.data) safe.arquivoProduzido={name:safe.arquivoProduzido.name,size:safe.arquivoProduzido.size,type:safe.arquivoProduzido.type,sessionOnly:true};
-  if(safe.anexos) safe.anexos=(safe.anexos||[]).map(f=>f&&f.data?{name:f.name,size:f.size,type:f.type}:f);
-  Object.keys(safe).forEach(k=>{if(safe[k]===undefined)delete safe[k];});
-  const {error}=await _SB.from('demands').upsert(safe);
-  if(error) console.warn('saveOneDemand:',error);
+  if(safe.anexos) safe.anexos=(safe.anexos||[]).map(f=>f?.data?{name:f.name,size:f.size,type:f.type,url:f.url}:f);
+  Object.keys(safe).forEach(k=>{if(safe[k]===undefined) delete safe[k];});
+  await _SB.from('demands').upsert(safe);
 }
-
 async function deleteOneDemand(id){
   await _SB.from('demands').delete().eq('id',id);
 }
-
 async function saveConfig(){
   await _SB.from('config').upsert({id:'main',data:{holidays:state.config.holidays||[],team:state.config.team||[]}});
 }
-
-async function quickResp(id, name){
-  const d=state.demands.find(x=>x.id===id);
-  if(!d) return;
-  d.responsavel=name;
-  await saveOneDemand(d);
-  renderDemands();
+async function quickResp(id,name){
+  const d=state.demands.find(x=>x.id===id); if(!d) return;
+  d.responsavel=name; await saveOneDemand(d); renderDemands();
   if(name) toast(id+' → '+name,'success');
 }
 </script>
@@ -1490,8 +1477,9 @@ const TIPO_COLORS = {
 };
 const CHART_COLORS = ['#1a3a6b','#1565c0','#1a8a4a','#6a3d9a','#c0521a','#b7770d','#c0392b','#5a7da0','#0d8a8a'];
 
+/* STORAGE */
 function save(){ saveConfig(); }
-function load(){ /* Supabase */ }
+function load(){/* disabled */}
 
 /* ═══════════════════════════════════════════════════
    UTILS
@@ -1796,7 +1784,8 @@ function renderDemands(){
   const tbody = document.getElementById('demands-tbody');
   const empty = document.getElementById('demands-empty');
   const footer = document.getElementById('table-footer');
-  if(!arr.length){ tbody.innerHTML=''; empty.classList.remove('hidden'); footer.textContent=''; return; }
+  if(!arr.length){ tbody.innerHTML=''; if(empty) empty.classList.remove('hidden'); if(footer) footer.textContent=''; return; }
+  if(empty) empty.classList.add('hidden');
   // Controle de colunas por aba
   const tab = currentDemandTab;
   const showTipo    = tab === '';
@@ -1831,15 +1820,8 @@ function renderDemands(){
     const descDisplay = isPrivateTab
       ? `<span style="font-family:var(--mono);font-size:11px;color:var(--blue);font-weight:700">${d.cnpj||''}</span>${d.nomeFantasia?`<span style="color:var(--text3);font-size:11px"> · ${d.nomeFantasia}</span>`:''}` 
       : (d.descricao||'—');
-    const _anexos = (d.anexos||[]).filter(f=>f&&(f.name||f.nome)).map(f=>({name:f.name||f.nome,type:f.type||f.tipo||'',url:f.url||null}));
-    const annexIcon = _anexos.length>0
-      ? _anexos.map(f=>{
-          const ic=f.type.startsWith('image/')?'🖼':f.type.startsWith('video/')?'🎬':'📄';
-          const nm=(f.name||'').length>12?(f.name||'').slice(0,10)+'…':(f.name||'arquivo');
-          return f.url?`<a href="${f.url}" target="_blank" style="display:inline-flex;align-items:center;gap:2px;background:#eef3fb;border:1px solid #c7d9f0;border-radius:4px;padding:2px 6px;font-size:10px;color:#1a3a6b;text-decoration:none;margin-left:3px;font-weight:600">${ic} ${nm}</a>`
-            :`<span style="display:inline-flex;align-items:center;gap:2px;background:#f1f5f9;border:1px solid #d0dce8;border-radius:4px;padding:2px 6px;font-size:10px;color:#5a7da0;margin-left:3px">${ic} ${nm}</span>`;
-        }).join('')
-      : (d.arquivo?.url?`<a href="${d.arquivo.url}" target="_blank" style="display:inline-flex;align-items:center;gap:2px;background:#eef3fb;border:1px solid #c7d9f0;border-radius:4px;padding:2px 6px;font-size:10px;color:#1a3a6b;text-decoration:none;margin-left:3px;font-weight:600">📎 ${(d.arquivo.name||'').slice(0,10)}</a>`:'');
+    const _ax=(d.anexos||[]).filter(f=>f&&(f.name||f.nome)).map(f=>({name:f.name||f.nome,url:f.url||null,type:f.type||f.tipo||''}));
+    const annexIcon=_ax.length>0?_ax.map(f=>{const ic=f.type.startsWith('image/')?'🖼':f.type.startsWith('video/')?'🎬':'📄';const nm=(f.name||'arquivo').length>14?(f.name||'arquivo').slice(0,12)+'…':(f.name||'arquivo');return f.url?`<a href="${f.url}" target="_blank" style="display:inline-flex;align-items:center;gap:3px;background:#eef3fb;border:1px solid #c7d9f0;border-radius:4px;padding:2px 7px;font-size:10px;color:#1a3a6b;text-decoration:none;margin-left:3px;white-space:nowrap;font-weight:600">${ic} ${nm}</a>`:`<span style="display:inline-flex;align-items:center;gap:3px;background:#f1f5f9;border:1px solid #d0dce8;border-radius:4px;padding:2px 7px;font-size:10px;color:#5a7da0;margin-left:3px;white-space:nowrap">${ic} ${nm}</span>`;}).join(''):(d.arquivo?.url?`<a href="${d.arquivo.url}" target="_blank" style="display:inline-flex;align-items:center;gap:3px;background:#eef3fb;border:1px solid #c7d9f0;border-radius:4px;padding:2px 7px;font-size:10px;color:#1a3a6b;text-decoration:none;margin-left:3px;white-space:nowrap;font-weight:600">📎 ${(d.arquivo.name||'arquivo').slice(0,12)}</a>`:'');
     const pdvInline = (!isComercialTab && d.pdv) ? `<span style="font-size:10px;color:var(--text3);margin-left:4px">📍${d.pdv.slice(0,14)}</span>` : '';
     const afInline  = d.afinidade ? `<span style="font-size:10px;color:var(--purple);margin-left:4px;font-weight:600">●${d.afinidade}</span>` : '';
     const descStyle = isPrivateTab ? 'max-width:260px' : 'max-width:200px';
@@ -1861,11 +1843,7 @@ function renderDemands(){
       ${tipoCell}
       ${isComercialTab ? pdvCell : ''}
       <td class="desc" style="${descStyle}" title="${d.descricao||''}">${descDisplay}${annexIcon}${pdvInline}${afInline}</td>
-      <td><select onchange="quickResp('${d.id}',this.value)" style="font-size:12px;border:1px solid var(--border);background:var(--card);border-radius:4px;padding:3px 6px;cursor:pointer;color:var(--text);max-width:120px">
-        <option value="">— atribuir —</option>
-        ${(state.config.team||[]).map(m=>`<option value="${m.name}" ${d.responsavel===m.name?'selected':''}>${m.name}</option>`).join('')}
-        ${d.responsavel&&!(state.config.team||[]).find(m=>m.name===d.responsavel)?`<option value="${d.responsavel}" selected>${d.responsavel}</option>`:''}
-      </select></td>
+      <td><select onchange="quickResp('${d.id}',this.value)" style="font-size:12px;border:1px solid var(--border);background:var(--card);border-radius:4px;padding:3px 6px;cursor:pointer;color:var(--text);max-width:120px"><option value="">— atribuir —</option>${(state.config.team||[]).map(m=>`<option value="${m.name}" ${d.responsavel===m.name?'selected':''}>${m.name}</option>`).join('')}${d.responsavel&&!(state.config.team||[]).find(m=>m.name===d.responsavel)?`<option value="${d.responsavel}" selected>${d.responsavel}</option>`:''}</select></td>
       <td><span class="status-badge ${sc}">${d.status}</span></td>
       <td class="mono" style="color:var(--gold);font-weight:600">${d.pecas||0}</td>
       ${versaoCell}
@@ -2061,7 +2039,7 @@ function renderPrivate(){
       <td class="mono">${fmtDate(d.prazo)}${late?'<span class="late-badge">ATRASO</span>':''}</td>
       <td class="mono" style="font-size:11px;color:var(--blue);font-weight:700">${d.cnpj||d.descricao?.slice(0,18)||'—'}</td>
       <td style="font-size:12px">${d.nomeFantasia||'—'}</td>
-      <td>${d.responsavel||'—'}</td>
+      <td><select onchange="quickResp('${d.id}',this.value)" style="font-size:12px;border:1px solid var(--border);background:var(--card);border-radius:4px;padding:3px 6px;cursor:pointer;color:var(--text);max-width:120px"><option value="">— atribuir —</option>${(state.config.team||[]).map(m=>`<option value="${m.name}" ${d.responsavel===m.name?'selected':''}>${m.name}</option>`).join('')}${d.responsavel&&!(state.config.team||[]).find(m=>m.name===d.responsavel)?`<option value="${d.responsavel}" selected>${d.responsavel}</option>`:''}</select></td>
       <td><span class="status-badge ${sc}">${d.status}</span></td>
       <td class="mono" style="color:var(--gold)">${d.pecas||0}</td>
       <td>
